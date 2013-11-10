@@ -10,7 +10,7 @@ var path = require('path');
 var Gaze = require('gaze').Gaze;
 var waiting = 'Waiting...';
 var changedFiles = Object.create(null);
-var watchers = [];
+var watchers = {};
 
 module.exports = function(grunt) {
   'use strict';
@@ -61,15 +61,6 @@ module.exports = function(grunt) {
     var self = this;
     var name = self.name || 'watch';
 
-    // Close any previously opened watchers
-    watchers.forEach(function(watcher) {
-      // If there were changes in wathced files during watch tasks execution
-      // we want to wait for them first before closing previously opened watchers
-      // they'll be executed on current tick so wait until it ends before closing watchers.
-      setImmediate(watcher.close.bind(watcher));
-    });
-    watchers = [];
-
     // Never gonna give you up, never gonna let you down
     if (grunt.config([name, 'options', 'forever']) !== false) {
       taskrun.forever();
@@ -94,6 +85,17 @@ module.exports = function(grunt) {
         return grunt.config.process(pattern);
       }).value();
 
+      // Close watchers for targets that are not present in current config
+      var targetNames = targets.map(function(target) {
+        return target.name;
+      });
+      for (var targetName in watchers) {
+        if (targetNames.indexOf(targetName) === -1) {
+          watchers[targetName].close();
+          delete watchers[targetName];
+        }
+      }
+
       // Validate the event option
       if (typeof target.options.event === 'string') {
         target.options.event = [target.options.event];
@@ -105,13 +107,18 @@ module.exports = function(grunt) {
       }
 
       // Create watcher per target
-      watchers.push(new Gaze(patterns, target.options, function(err) {
+      new Gaze(patterns, target.options, function(err) {
         if (err) {
           if (typeof err === 'string') { err = new Error(err); }
           grunt.log.writeln('ERROR'.red);
           grunt.fatal(err);
           return taskrun.done();
         }
+
+        if (watchers[target.name]) {
+          watchers[target.name].close();
+        }
+        watchers[target.name] = this;
 
         // Log all watched files with --verbose set
         if (grunt.option('verbose')) {
@@ -174,7 +181,7 @@ module.exports = function(grunt) {
           if (typeof err === 'string') { err = new Error(err); }
           grunt.log.error(err.message);
         });
-      }));
+      });
     });
 
   });
