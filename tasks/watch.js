@@ -63,7 +63,10 @@ module.exports = function(grunt) {
 
     // Close any previously opened watchers
     watchers.forEach(function(watcher) {
-      watcher.close();
+      // If there were changes in wathced files during watch tasks execution
+      // we want to wait for them first before closing previously opened watchers
+      // they'll be executed on current tick so wait until it ends before closing watchers.
+      setImmediate(watcher.close.bind(watcher));
     });
     watchers = [];
 
